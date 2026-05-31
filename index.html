@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Local</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* ===================================================
+   DESIGN TOKENS
+=================================================== */
+:root {
+  --col-bg: #F7F4EF;
+  --col-surface: #FFFFFF;
+  --col-border: #E2DDD5;
+  --col-text: #1A1714;
+  --col-muted: #7A756E;
+  --col-accent: #2C4A3E;
+  --col-accent-light: #E8F0ED;
+  --col-danger: #B83232;
+  --col-danger-light: #FBEAEA;
+  --cat-religion: #7B4FA6;
+  --cat-religion-bg: #F3EDF9;
+  --cat-public: #1A5E9E;
+  --cat-public-bg: #E8F0FA;
+  --cat-commerce: #B8600A;
+  --cat-commerce-bg: #FBF0E4;
+  --cat-hotel: #1A7A5E;
+  --cat-hotel-bg: #E4F5EF;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.07);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.13);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'DM Sans', sans-serif; background: var(--col-bg); color: var(--col-text); height: 100vh; overflow: hidden; }
+
+/* ===================================================
+   MODE TOGGLE BUTTON (floating, top-right)
+=================================================== */
+#mode-toggle-btn {
+  position: fixed; top: 14px; right: 14px; z-index: 10000;
+  background: var(--col-surface); border: 1px solid var(--col-border);
+  border-radius: 30px; padding: 7px 14px 7px 10px;
+  display: flex; align-items: center; gap: 7px;
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--col-text); cursor: pointer; box-shadow: var(--shadow-md);
+  transition: all 0.2s; white-space: nowrap;
+  user-select: none;
+}
+#mode-toggle-btn:hover { background: var(--col-bg); }
+#mode-toggle-btn .mtb-icon { font-size: 16px; line-height: 1; }
+#mode-toggle-btn .mtb-label { letter-spacing: .01em; }
+
+/* ===================================================
+   LAYOUT MODES
+=================================================== */
+body.mode-desktop #view-map   { flex-direction: row; }
+body.mode-desktop #sidebar    { display: flex; }
+body.mode-desktop #mobile-bar { display: none; }
+body.mode-desktop #mobile-panel { display: none; }
+body.mode-desktop #map-fab    { display: none; }
+
+body.mode-mobile #view-map    { flex-direction: column; }
+body.mode-mobile #sidebar     { display: none; }
+body.mode-mobile #mobile-bar  { display: flex; }
+body.mode-mobile #map-fab     { display: flex; }
+
+/* ===================================================
+   SHARED VIEW STRUCTURE
+=================================================== */
+.view { display: none; height: 100vh; overflow: auto; }
+.view.active { display: flex; flex-direction: column; }
+#view-map { overflow: hidden; }
+#view-detail { overflow-y: auto; }
+
+/* ===================================================
+   DESKTOP: SIDEBAR
+=================================================== */
+#sidebar {
+  width: 300px; min-width: 300px; background: var(--col-surface);
+  border-right: 1px solid var(--col-border); flex-direction: column;
+  z-index: 10; box-shadow: 4px 0 20px rgba(0,0,0,0.06);
+}
+#sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid var(--col-border); }
+#sidebar-header h1 { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--col-accent); line-height: 1.2; }
+#sidebar-header p { font-size: 12px; color: var(--col-muted); margin-top: 4px; }
+#category-controls { padding: 16px 20px; border-bottom: 1px solid var(--col-border); }
+#category-controls h3 { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--col-muted); text-transform: uppercase; margin-bottom: 12px; }
+
+.cat-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-radius: 10px; margin-bottom: 6px;
+  cursor: pointer; transition: background 0.15s; border: 1px solid transparent;
+}
+.cat-toggle:hover { background: var(--col-bg); }
+.cat-toggle.active { border-color: currentColor; }
+.cat-toggle-left { display: flex; align-items: center; gap: 10px; }
+.cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.cat-toggle-label { font-size: 13px; font-weight: 500; }
+.cat-count { font-size: 11px; padding: 2px 7px; border-radius: 20px; font-weight: 600; }
+.toggle-switch { width: 36px; height: 20px; border-radius: 10px; background: #D5D0C8; position: relative; transition: background 0.2s; flex-shrink: 0; }
+.toggle-switch.on { background: var(--col-accent); }
+.toggle-switch::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: transform 0.2s; }
+.toggle-switch.on::after { transform: translateX(16px); }
+
+[data-cat="religion"] { color: var(--cat-religion); }
+[data-cat="religion"] .cat-dot { background: var(--cat-religion); }
+[data-cat="religion"] .cat-count { background: var(--cat-religion-bg); color: var(--cat-religion); }
+[data-cat="religion"].active { background: var(--cat-religion-bg); }
+[data-cat="public"] { color: var(--cat-public); }
+[data-cat="public"] .cat-dot { background: var(--cat-public); }
+[data-cat="public"] .cat-count { background: var(--cat-public-bg); color: var(--cat-public); }
+[data-cat="public"].active { background: var(--cat-public-bg); }
+[data-cat="commerce"] { color: var(--cat-commerce); }
+[data-cat="commerce"] .cat-dot { background: var(--cat-commerce); }
+[data-cat="commerce"] .cat-count { background: var(--cat-commerce-bg); color: var(--cat-commerce); }
+[data-cat="commerce"].active { background: var(--cat-commerce-bg); }
+[data-cat="hotel"] { color: var(--cat-hotel); }
+[data-cat="hotel"] .cat-dot { background: var(--cat-hotel); }
+[data-cat="hotel"] .cat-count { background: var(--cat-hotel-bg); color: var(--cat-hotel); }
+[data-cat="hotel"].active { background: var(--cat-hotel-bg); }
+
+#place-list { flex: 1; overflow-y: auto; padding: 12px; }
+.place-list-item {
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  margin-bottom: 4px; transition: background 0.1s; border: 1px solid transparent;
+}
+.place-list-item:hover { background: var(--col-bg); border-color: var(--col-border); }
+.place-list-item .pli-name { font-size: 13px; font-weight: 500; }
+.place-list-item .pli-cat { font-size: 11px; color: var(--col-muted); margin-top: 2px; }
+.place-list-empty { text-align: center; color: var(--col-muted); font-size: 13px; padding: 24px 0; }
+
+#sidebar-footer {
+  padding: 14px 20px; border-top: 1px solid var(--col-border);
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ===================================================
+   MAP CONTAINER (shared)
+=================================================== */
+#map-container { flex: 1; position: relative; overflow: hidden; }
+#map { width: 100%; height: 100%; background: #e8e3dc; }
+
+/* ===================================================
+   MOBILE: TOP NAV BAR
+=================================================== */
+#mobile-bar {
+  height: 56px; background: var(--col-surface); border-bottom: 1px solid var(--col-border);
+  padding: 0 16px; align-items: center; justify-content: space-between; flex-shrink: 0;
+  box-shadow: var(--shadow-sm); z-index: 20;
+}
+#mobile-bar h1 { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--col-accent); }
+#mobile-bar .mb-actions { display: flex; gap: 8px; align-items: center; }
+
+/* ===================================================
+   MOBILE: BOTTOM SHEET (categories + list)
+=================================================== */
+#mobile-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 500;
+  background: var(--col-surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.14);
+  transform: translateY(calc(100% - 72px));
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 80vh; display: flex; flex-direction: column;
+}
+#mobile-panel.open { transform: translateY(0); }
+#mp-handle {
+  width: 36px; height: 4px; border-radius: 2px; background: var(--col-border);
+  margin: 10px auto 0; flex-shrink: 0; cursor: pointer;
+}
+#mp-peek {
+  padding: 10px 16px 12px; display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; flex-shrink: 0;
+}
+#mp-peek-title { font-weight: 600; font-size: 14px; }
+#mp-peek-count { font-size: 12px; color: var(--col-muted); }
+#mp-cats {
+  padding: 0 12px 8px; display: flex; gap: 8px; overflow-x: auto;
+  flex-shrink: 0; scrollbar-width: none;
+}
+#mp-cats::-webkit-scrollbar { display: none; }
+.mp-cat-chip {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border-radius: 20px; border: 1.5px solid var(--col-border);
+  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s; background: var(--col-bg); color: var(--col-muted);
+  flex-shrink: 0;
+}
+.mp-cat-chip .chip-dot { width: 8px; height: 8px; border-radius: 50%; }
+.mp-cat-chip.active-chip { border-color: currentColor; background: var(--col-surface); }
+.mp-cat-chip.active-chip[data-cat="religion"] { color: var(--cat-religion); background: var(--cat-religion-bg); }
+.mp-cat-chip.active-chip[data-cat="public"]   { color: var(--cat-public);   background: var(--cat-public-bg); }
+.mp-cat-chip.active-chip[data-cat="commerce"] { color: var(--cat-commerce); background: var(--cat-commerce-bg); }
+.mp-cat-chip.active-chip[data-cat="hotel"]    { color: var(--cat-hotel);    background: var(--cat-hotel-bg); }
+
+#mp-list { overflow-y: auto; padding: 4px 12px 24px; flex: 1; }
+.mp-place-card {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  border-radius: 12px; cursor: pointer; border: 1px solid transparent;
+  transition: all 0.15s; margin-bottom: 6px;
+}
+.mp-place-card:active { background: var(--col-bg); }
+.mp-place-icon {
+  width: 40px; height: 40px; border-radius: 10px; display: flex;
+  align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+}
+.mp-place-info { flex: 1; min-width: 0; }
+.mp-place-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-place-cat  { font-size: 11px; color: var(--col-muted); margin-top: 2px; }
+.mp-place-arrow { color: var(--col-border); font-size: 16px; flex-shrink: 0; }
+
+/* ===================================================
+   MOBILE: FAB (admin button)
+=================================================== */
+#map-fab {
+  position: fixed; bottom: 88px; right: 18px; z-index: 501;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--col-accent); color: #fff;
+  align-items: center; justify-content: center;
+  font-size: 20px; box-shadow: 0 4px 16px rgba(44,74,62,0.4);
+  cursor: pointer; border: none; transition: transform 0.15s;
+}
+#map-fab:active { transform: scale(0.93); }
+
+/* ===================================================
+   LEAFLET POPUP OVERRIDES
+=================================================== */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-family: 'DM Sans', sans-serif !important;
+  padding: 0 !important; overflow: hidden;
+}
+.leaflet-popup-content { margin: 0 !important; }
+.leaflet-popup-tip-container { display: none; }
+.map-popup { padding: 14px 16px 13px; min-width: 190px; }
+.map-popup-cat { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 4px; }
+.map-popup h4 { margin: 0 0 5px; font-size: 14px; color: var(--col-text); font-weight: 600; }
+.map-popup p { margin: 0 0 10px; font-size: 12px; color: var(--col-muted); line-height: 1.5; }
+.map-popup a { font-size: 12px; font-weight: 600; text-decoration: none; }
+
+/* ===================================================
+   BUTTONS & FORMS
+=================================================== */
+.btn {
+  padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--col-border);
+  background: var(--col-surface); font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; color: var(--col-text);
+}
+.btn:hover { background: var(--col-bg); }
+.btn-accent { background: var(--col-accent); color: #fff; border-color: var(--col-accent); }
+.btn-accent:hover { background: #1e3529; }
+.btn-danger { background: var(--col-danger-light); color: var(--col-danger); border-color: #F0BABA; }
+.btn-danger:hover { background: #F5CECE; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-icon { padding: 8px; border-radius: 10px; width: 36px; height: 36px; display:inline-flex; align-items:center; justify-content:center; }
+
+.form-group { margin-bottom: 16px; }
+label { display: block; font-size: 11px; font-weight: 600; color: var(--col-muted); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+input[type=text], input[type=password], input[type=email], input[type=tel], select, textarea {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--col-border); border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--col-bg);
+  color: var(--col-text); outline: none; transition: border 0.15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--col-accent); background: #fff; }
+textarea { resize: vertical; min-height: 80px; }
+
+.sep { flex: 1; }
+.coords-row { display: flex; gap: 8px; }
+.coords-row .form-group { flex: 1; }
+
+/* ===================================================
+   LOGIN VIEW
+=================================================== */
+#view-login { align-items: center; justify-content: center; background: var(--col-bg); }
+.login-card {
+  background: var(--col-surface); border: 1px solid var(--col-border);
+  border-radius: 20px; padding: 40px 36px; width: 100%; max-width: 400px;
+  box-shadow: var(--shadow-lg); margin: 16px;
+}
+.login-logo { font-family: 'DM Serif Display', serif; font-size: 26px; color: var(--col-accent); margin-bottom: 6px; }
+.login-sub { font-size: 13px; color: var(--col-muted); margin-bottom: 28px; }
+.login-error { color: var(--col-danger); font-size: 12px; margin-top: 8px; display: none; }
+.login-error.show { display: block; }
+
+/* ===================================================
+   ADMIN VIEW
+=================================================== */
+#view-admin { background: var(--col-bg); }
+#admin-header {
+  background: var(--col-surface); border-bottom: 1px solid var(--col-border);
+  padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+  height: 58px; flex-shrink: 0; box-shadow: var(--shadow-sm);
+}
+#admin-header h2 { font-family: 'DM Serif Display', serif; font-size: 19px; color: var(--col-accent); }
+#admin-header .header-right { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--col-muted); }
+#admin-body { display: flex; flex: 1; overflow: hidden; }
+#admin-places { flex: 1; overflow-y: auto; padding: 20px 24px; }
+#admin-form-panel {
+  width: 340px; min-width: 340px; background: var(--col-surface);
+  border-left: 1px solid var(--col-border); overflow-y: auto; padding: 20px;
+}
+#admin-form-panel h3 { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--col-accent); margin-bottom: 18px; }
+#admin-places-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+#admin-places-header h3 { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--col-accent); }
+.admin-place-card {
+  background: var(--col-surface); border: 1px solid var(--col-border);
+  border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 14px; transition: border-color 0.15s;
+}
+.admin-place-card:hover { border-color: #C8C3BB; }
+.apc-info { flex: 1; }
+.apc-name { font-weight: 500; font-size: 14px; }
+.apc-meta { font-size: 12px; color: var(--col-muted); margin-top: 2px; }
+.cat-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+.cat-badge-religion { background: var(--cat-religion-bg); color: var(--cat-religion); }
+.cat-badge-public   { background: var(--cat-public-bg);   color: var(--cat-public); }
+.cat-badge-commerce { background: var(--cat-commerce-bg); color: var(--cat-commerce); }
+.cat-badge-hotel    { background: var(--cat-hotel-bg);    color: var(--cat-hotel); }
+.apc-actions { display: flex; gap: 6px; }
+.admin-empty { text-align: center; color: var(--col-muted); padding: 40px 0; font-size: 14px; }
+
+.photo-preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.photo-thumb { width: 70px; height: 70px; border-radius: 8px; object-fit: cover; border: 1px solid var(--col-border); }
+.photo-thumb-wrapper { position: relative; display: inline-block; }
+
+/* ===================================================
+   MOBILE ADMIN (stacked layout)
+=================================================== */
+body.mode-mobile #admin-body { flex-direction: column; }
+body.mode-mobile #admin-form-panel {
+  width: 100%; min-width: 0; border-left: none;
+  border-top: 1px solid var(--col-border);
+}
+body.mode-mobile #admin-header { padding: 0 16px; }
+body.mode-mobile #admin-places { padding: 16px; }
+body.mode-mobile #admin-form-panel { padding: 16px; }
+
+/* ===================================================
+   DETAIL VIEW
+=================================================== */
+#view-detail { background: var(--col-bg); }
+#detail-header {
+  background: var(--col-surface); border-bottom: 1px solid var(--col-border);
+  padding: 0 24px; display: flex; align-items: center; justify-content: space-between;
+  height: 58px; flex-shrink: 0; position: sticky; top: 0; z-index: 10;
+  box-shadow: var(--shadow-sm);
+}
+#detail-content { max-width: 780px; margin: 0 auto; padding: 32px 24px; }
+.detail-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px; border-radius: var(--radius-lg); overflow: hidden; }
+.detail-photos img { width: 100%; height: 200px; object-fit: cover; }
+.detail-photos.single img { grid-column: 1/-1; height: 240px; }
+.detail-photos.many img:first-child { grid-column: 1/-1; height: 260px; }
+.detail-title { font-family: 'DM Serif Display', serif; font-size: 32px; color: var(--col-accent); line-height: 1.2; margin-bottom: 10px; }
+.detail-desc { font-size: 15px; line-height: 1.8; color: var(--col-text); margin: 16px 0 28px; }
+.detail-section { background: var(--col-surface); border: 1px solid var(--col-border); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+.detail-section h4 { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--col-muted); margin-bottom: 12px; }
+.contact-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--col-border); font-size: 14px; }
+.contact-row:last-child { border-bottom: none; }
+.contact-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--col-accent-light); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.contact-val { color: var(--col-text); font-weight: 500; }
+.contact-label { color: var(--col-muted); font-size: 12px; }
+
+/* Mobile detail tweaks */
+body.mode-mobile #detail-content { padding: 20px 16px; }
+body.mode-mobile .detail-title { font-size: 26px; }
+body.mode-mobile #detail-header { padding: 0 16px; }
+
+/* ===================================================
+   NOTIFICATION
+=================================================== */
+.notif {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--col-accent); color: #fff; padding: 10px 20px; border-radius: 30px;
+  font-size: 13px; font-weight: 500; box-shadow: var(--shadow-md); z-index: 9999;
+  opacity: 0; transition: all 0.3s; white-space: nowrap; pointer-events: none;
+}
+body.mode-desktop .notif { bottom: 24px; left: unset; right: 24px; transform: translateY(20px); border-radius: 10px; }
+.notif.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+body.mode-desktop .notif.show { transform: translateY(0); }
+.notif.danger { background: var(--col-danger); }
+
+/* ===================================================
+   SCROLLBAR
+=================================================== */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--col-border); border-radius: 10px; }
+</style>
+</head>
+<body class="mode-desktop">
+
+<!-- ===== MODE TOGGLE ===== -->
+<button id="mode-toggle-btn" onclick="toggleMode()" title="Cambiar modo de pantalla">
+  <span class="mtb-icon" id="mode-icon">📱</span>
+  <span class="mtb-label" id="mode-label">Modo móvil</span>
+</button>
+
+<!-- ===================================================
+     MAP VIEW
+=================================================== -->
+<div id="view-map" class="view active">
+
+  <!-- DESKTOP SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>Mapa Local</h1>
+      <p>Guía de lugares de interés</p>
+    </div>
+    <div id="category-controls">
+      <h3>Categorías</h3>
+      <div class="cat-toggle active" data-cat="religion" onclick="toggleCategory('religion')">
+        <div class="cat-toggle-left">
+          <div class="cat-dot"></div>
+          <span class="cat-toggle-label">Turismo Religioso</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="cat-count" id="cnt-religion">0</span>
+          <div class="toggle-switch on" id="sw-religion"></div>
+        </div>
+      </div>
+      <div class="cat-toggle active" data-cat="public" onclick="toggleCategory('public')">
+        <div class="cat-toggle-left">
+          <div class="cat-dot"></div>
+          <span class="cat-toggle-label">Instituciones Públicas</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="cat-count" id="cnt-public">0</span>
+          <div class="toggle-switch on" id="sw-public"></div>
+        </div>
+      </div>
+      <div class="cat-toggle active" data-cat="commerce" onclick="toggleCategory('commerce')">
+        <div class="cat-toggle-left">
+          <div class="cat-dot"></div>
+          <span class="cat-toggle-label">Comercios</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="cat-count" id="cnt-commerce">0</span>
+          <div class="toggle-switch on" id="sw-commerce"></div>
+        </div>
+      </div>
+      <div class="cat-toggle active" data-cat="hotel" onclick="toggleCategory('hotel')">
+        <div class="cat-toggle-left">
+          <div class="cat-dot"></div>
+          <span class="cat-toggle-label">Hoteles</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="cat-count" id="cnt-hotel">0</span>
+          <div class="toggle-switch on" id="sw-hotel"></div>
+        </div>
+      </div>
+    </div>
+    <div id="place-list"></div>
+    <div id="sidebar-footer">
+      <button class="btn btn-accent btn-sm" onclick="goAdmin()">⚙ Administrar</button>
+      <span class="sep"></span>
+      <span id="footer-user" style="font-size:12px;color:var(--col-muted)"></span>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+
+  <!-- MOBILE TOP BAR -->
+  <div id="mobile-bar">
+    <h1>Mapa Local</h1>
+    <div class="mb-actions">
+      <span id="footer-user-mobile" style="font-size:12px;color:var(--col-muted)"></span>
+    </div>
+  </div>
+
+  <!-- MOBILE BOTTOM SHEET -->
+  <div id="mobile-panel">
+    <div id="mp-handle" onclick="togglePanel()"></div>
+    <div id="mp-peek" onclick="togglePanel()">
+      <span id="mp-peek-title">Lugares</span>
+      <span id="mp-peek-count"></span>
+    </div>
+    <div id="mp-cats"></div>
+    <div id="mp-list"></div>
+  </div>
+
+  <!-- MOBILE FAB (admin) -->
+  <button id="map-fab" onclick="goAdmin()" title="Administrar">⚙</button>
+
+</div>
+
+<!-- ===================================================
+     LOGIN VIEW
+=================================================== -->
+<div id="view-login" class="view">
+  <div class="login-card">
+    <div class="login-logo">Mapa Local</div>
+    <div class="login-sub">Panel de Administración — Iniciar Sesión</div>
+    <div class="form-group">
+      <label>Usuario</label>
+      <input type="text" id="login-user" placeholder="admin" autocomplete="username" />
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
+    <div style="margin-top:24px;display:flex;gap:10px;">
+      <button class="btn btn-accent" style="flex:1" onclick="doLogin()">Ingresar</button>
+      <button class="btn" onclick="showView('map')">Volver</button>
+    </div>
+    <p style="margin-top:16px;font-size:11px;color:var(--col-muted);text-align:center">
+      Credenciales por defecto: admin / admin123
+    </p>
+  </div>
+</div>
+
+<!-- ===================================================
+     ADMIN VIEW
+=================================================== -->
+<div id="view-admin" class="view">
+  <div id="admin-header">
+    <h2>Administración</h2>
+    <div class="header-right">
+      <span id="admin-user-name"></span>
+      <button class="btn btn-sm" onclick="showView('map')">← Mapa</button>
+      <button class="btn btn-sm btn-danger" onclick="doLogout()">Salir</button>
+    </div>
+  </div>
+  <div id="admin-body">
+    <div id="admin-places">
+      <div id="admin-places-header">
+        <h3>Lugares registrados</h3>
+        <button class="btn btn-accent btn-sm" onclick="openNewForm()">+ Agregar</button>
+      </div>
+      <div id="admin-place-list"></div>
+    </div>
+    <div id="admin-form-panel">
+      <h3 id="form-panel-title">Nuevo Lugar</h3>
+      <div class="form-group">
+        <label>Nombre del lugar</label>
+        <input type="text" id="f-name" placeholder="Ej: Iglesia San Martín" />
+      </div>
+      <div class="form-group">
+        <label>Categoría</label>
+        <select id="f-cat">
+          <option value="religion">Turismo Religioso</option>
+          <option value="public">Institución Pública</option>
+          <option value="commerce">Comercio</option>
+          <option value="hotel">Hotel</option>
+        </select>
+      </div>
+      <div class="coords-row">
+        <div class="form-group">
+          <label>Latitud</label>
+          <input type="text" id="f-lat" placeholder="-38.1234" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label>Longitud</label>
+          <input type="text" id="f-lng" placeholder="-65.1234" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Descripción</label>
+        <textarea id="f-desc" placeholder="Descripción del lugar..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Dirección física</label>
+        <input type="text" id="f-address" placeholder="Calle y número" />
+      </div>
+      <div class="form-group">
+        <label>Teléfono</label>
+        <input type="tel" id="f-phone" placeholder="+54 9 ..." />
+      </div>
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="f-email" placeholder="contacto@ejemplo.com" />
+      </div>
+      <div class="form-group">
+        <label>Sitio web</label>
+        <input type="text" id="f-web" placeholder="https://..." />
+      </div>
+      <div class="form-group">
+        <label>Fotos (URLs, una por línea)</label>
+        <textarea id="f-photos" placeholder="https://imagen1.jpg&#10;https://imagen2.jpg" style="min-height:60px"></textarea>
+        <div id="photo-preview" class="photo-preview-grid"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-accent" style="flex:1" onclick="savePlace()">Guardar</button>
+        <button class="btn" onclick="clearForm()">Limpiar</button>
+      </div>
+      <div id="form-msg" style="margin-top:8px;font-size:12px;display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     DETAIL VIEW
+=================================================== -->
+<div id="view-detail" class="view">
+  <div id="detail-header">
+    <button class="btn btn-sm" onclick="showView('map')">← Volver</button>
+    <div id="detail-header-cat"></div>
+    <div id="detail-admin-btn" style="display:none">
+      <button class="btn btn-sm" onclick="editCurrentPlace()">Editar</button>
+    </div>
+  </div>
+  <div id="detail-content"></div>
+</div>
+
+<!-- Notification -->
+<div class="notif" id="notif"></div>
+
+<!-- ===================================================
+     JAVASCRIPT
+=================================================== -->
+<script>
+// ===== CONSTANTS =====
+const CATEGORIES = {
+  religion: { label: 'Turismo Religioso', color: '#7B4FA6', emoji: '⛪', bg: 'var(--cat-religion-bg)' },
+  public:   { label: 'Institución Pública', color: '#1A5E9E', emoji: '🏛',  bg: 'var(--cat-public-bg)' },
+  commerce: { label: 'Comercio',            color: '#B8600A', emoji: '🏪', bg: 'var(--cat-commerce-bg)' },
+  hotel:    { label: 'Hotel',               color: '#1A7A5E', emoji: '🏨', bg: 'var(--cat-hotel-bg)' }
+};
+
+let activeCats = { religion: true, public: true, commerce: true, hotel: true };
+let mapInstance = null;
+let mapMarkers  = {};
+let currentEditId   = null;
+let currentDetailId = null;
+let panelOpen = false;
+let currentMode = 'desktop'; // 'desktop' | 'mobile'
+
+// ===== MODE TOGGLE =====
+function toggleMode() {
+  currentMode = (currentMode === 'desktop') ? 'mobile' : 'desktop';
+  applyMode(currentMode);
+  localStorage.setItem('mapa_mode', currentMode);
+}
+
+function applyMode(mode) {
+  currentMode = mode;
+  document.body.classList.remove('mode-desktop', 'mode-mobile');
+  document.body.classList.add('mode-' + mode);
+  const icon  = document.getElementById('mode-icon');
+  const label = document.getElementById('mode-label');
+  if (mode === 'mobile') {
+    icon.textContent  = '🖥';
+    label.textContent = 'Modo escritorio';
+    renderMobilePanel();
+  } else {
+    icon.textContent  = '📱';
+    label.textContent = 'Modo móvil';
+    updateSidebar();
+  }
+  setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 80);
+}
+
+// ===== SUPABASE CONFIG — REEMPLAZÁ ESTOS VALORES =====
+const SUPABASE_URL  = 'https://kbiizxgbbhztfowbdwex.supabase.co/rest/v1/';   // ← pegá tu URL
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWl6eGdiYmh6dGZvd2Jkd2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMzQzMzYsImV4cCI6MjA5NTgxMDMzNn0._RoJWpYNN78EYSgQGv7vU-RYotvgrCWSZs8SGDfCx7g';                       // ← pegá tu clave pública
+// ======================================================
+
+let _placesCache = [];
+let _supabaseReady = false;
+
+async function sbFetch(path, options = {}) {
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': options.prefer || 'return=representation',
+      ...options.headers,
+    }
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error('Supabase error: ' + err); }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function loadPlacesFromSupabase() {
+  try {
+    const rows = await sbFetch('places?select=*&order=created_at.asc');
+    _placesCache = (rows || []).map(r => ({
+      id: r.id, name: r.name, category: r.category, lat: r.lat, lng: r.lng,
+      desc: r.descr || '', address: r.address || '', phone: r.phone || '',
+      email: r.email || '', web: r.web || '', photos: r.photos || [],
+    }));
+    _supabaseReady = true;
+    return _placesCache;
+  } catch(e) {
+    console.error('Error cargando lugares:', e);
+    notify('⚠ No se pudo conectar con la base de datos', true);
+    return _placesCache;
+  }
+}
+
+function getData() { return _placesCache; }
+
+async function saveNewPlace(data) {
+  const row = {
+    name: data.name, category: data.category, lat: data.lat, lng: data.lng,
+    descr: data.desc || null, address: data.address || null, phone: data.phone || null,
+    email: data.email || null, web: data.web || null, photos: data.photos || [],
+  };
+  const result = await sbFetch('places', { method: 'POST', body: JSON.stringify(row) });
+  const saved = Array.isArray(result) ? result[0] : result;
+  data.id = saved.id;
+  _placesCache.push({ ...data, id: saved.id });
+  return saved.id;
+}
+
+async function updatePlace(id, data) {
+  const row = {
+    name: data.name, category: data.category, lat: data.lat, lng: data.lng,
+    descr: data.desc || null, address: data.address || null, phone: data.phone || null,
+    email: data.email || null, web: data.web || null, photos: data.photos || [],
+  };
+  await sbFetch('places?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(row), prefer: 'return=minimal' });
+  const idx = _placesCache.findIndex(p => p.id === id);
+  if (idx >= 0) _placesCache[idx] = { ...data, id };
+}
+
+async function deleteFromSupabase(id) {
+  await sbFetch('places?id=eq.' + id, { method: 'DELETE', prefer: 'return=minimal' });
+  _placesCache = _placesCache.filter(p => p.id !== id);
+}
+
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem('mapa_users') || 'null'); } catch(e) { return null; }
+}
+function initUsers() {
+  if (!getUsers()) {
+    localStorage.setItem('mapa_users', JSON.stringify([
+      { username: 'admin', password: 'admin123', name: 'Administrador' }
+    ]));
+  }
+}
+function getSession() {
+  try { return JSON.parse(sessionStorage.getItem('mapa_session') || 'null'); } catch(e) { return null; }
+}
+function setSession(u) { sessionStorage.setItem('mapa_session', JSON.stringify(u)); }
+function clearSession() { sessionStorage.removeItem('mapa_session'); }
+
+// ===== VIEWS =====
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (name === 'map') {
+    if (currentMode === 'desktop') updateSidebar();
+    else renderMobilePanel();
+    setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 80);
+    refreshMarkers();
+  }
+  if (name === 'admin') {
+    const s = getSession();
+    if (s) document.getElementById('admin-user-name').textContent = s.name;
+    renderAdminList();
+  }
+}
+
+function goAdmin() {
+  if (getSession()) showView('admin');
+  else showView('login');
+}
+
+// ===== LOGIN =====
+initUsers();
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const found = (getUsers() || []).find(x => x.username === u && x.password === p);
+  if (found) {
+    setSession(found);
+    document.getElementById('login-error').classList.remove('show');
+    document.getElementById('footer-user').textContent = found.name;
+    document.getElementById('footer-user-mobile').textContent = found.name;
+    showView('admin');
+  } else {
+    document.getElementById('login-error').classList.add('show');
+  }
+}
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function doLogout() {
+  clearSession();
+  document.getElementById('footer-user').textContent = '';
+  document.getElementById('footer-user-mobile').textContent = '';
+  showView('map');
+}
+
+// ===== DESKTOP SIDEBAR =====
+function updateSidebar() {
+  const places = getData();
+  ['religion','public','commerce','hotel'].forEach(c => {
+    document.getElementById('cnt-' + c).textContent = places.filter(p => p.category === c).length;
+  });
+  renderPlaceList();
+}
+
+function toggleCategory(cat) {
+  activeCats[cat] = !activeCats[cat];
+  const sw     = document.getElementById('sw-' + cat);
+  const toggle = document.querySelector(`.cat-toggle[data-cat="${cat}"]`);
+  if (activeCats[cat]) { sw.classList.add('on'); toggle.classList.add('active'); }
+  else                 { sw.classList.remove('on'); toggle.classList.remove('active'); }
+  refreshMarkers();
+  renderPlaceList();
+  renderMobilePanel();
+}
+
+function renderPlaceList() {
+  const places  = getData();
+  const visible = places.filter(p => activeCats[p.category]);
+  const el = document.getElementById('place-list');
+  if (!visible.length) { el.innerHTML = '<div class="place-list-empty">Sin lugares visibles</div>'; return; }
+  el.innerHTML = visible.map(p => `
+    <div class="place-list-item" onclick="focusPlace('${p.id}')">
+      <div class="pli-name">${CATEGORIES[p.category].emoji} ${p.name}</div>
+      <div class="pli-cat">${CATEGORIES[p.category].label}</div>
+    </div>`).join('');
+}
+
+// ===== MOBILE PANEL =====
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('mobile-panel').classList.toggle('open', panelOpen);
+}
+
+function renderMobilePanel() {
+  const places  = getData();
+  const visible = places.filter(p => activeCats[p.category]);
+
+  // Peek bar count
+  document.getElementById('mp-peek-count').textContent =
+    visible.length + ' lugar' + (visible.length !== 1 ? 'es' : '');
+
+  // Category chips
+  const catsEl = document.getElementById('mp-cats');
+  catsEl.innerHTML = Object.entries(CATEGORIES).map(([key, cat]) => `
+    <div class="mp-cat-chip ${activeCats[key] ? 'active-chip' : ''}" data-cat="${key}"
+         onclick="toggleCategory('${key}')">
+      <div class="chip-dot" style="background:${cat.color}"></div>
+      ${cat.emoji} ${cat.label}
+    </div>`).join('');
+
+  // Place list
+  const listEl = document.getElementById('mp-list');
+  if (!visible.length) {
+    listEl.innerHTML = '<div class="place-list-empty" style="padding:20px 0">Sin lugares visibles</div>';
+    return;
+  }
+  listEl.innerHTML = visible.map(p => {
+    const cat = CATEGORIES[p.category];
+    return `
+    <div class="mp-place-card" onclick="focusPlace('${p.id}')">
+      <div class="mp-place-icon" style="background:${cat.bg}">${cat.emoji}</div>
+      <div class="mp-place-info">
+        <div class="mp-place-name">${p.name}</div>
+        <div class="mp-place-cat">${cat.label}</div>
+      </div>
+      <div class="mp-place-arrow">›</div>
+    </div>`;
+  }).join('');
+}
+
+// ===== FOCUS PLACE =====
+function focusPlace(id) {
+  const p = getData().find(x => x.id === id);
+  if (!p) return;
+  if (mapInstance && mapMarkers[id]) {
+    mapInstance.setView([parseFloat(p.lat), parseFloat(p.lng)], 16);
+    mapMarkers[id].openPopup();
+    // Close panel on mobile so user sees marker
+    if (panelOpen && currentMode === 'mobile') togglePanel();
+  } else {
+    showDetail(id);
+  }
+}
+
+// ===== LEAFLET MAP =====
+function initLeafletMap() {
+  const places = getData();
+  let center = [-38.95, -68.06];
+  if (places.length) center = [parseFloat(places[0].lat), parseFloat(places[0].lng)];
+
+  mapInstance = L.map('map', { center, zoom: 13, zoomControl: true });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(mapInstance);
+
+  refreshMarkers();
+}
+
+function makeCircleIcon(color) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:22px;height:22px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -15]
+  });
+}
+
+function refreshMarkers() {
+  Object.values(mapMarkers).forEach(m => m.remove());
+  mapMarkers = {};
+  if (!mapInstance) return;
+  getData().forEach(p => {
+    if (!activeCats[p.category]) return;
+    const cat  = CATEGORIES[p.category];
+    const short = p.desc ? p.desc.substring(0, 80) + (p.desc.length > 80 ? '…' : '') : '';
+    const marker = L.marker([parseFloat(p.lat), parseFloat(p.lng)],
+      { icon: makeCircleIcon(cat.color), title: p.name }
+    ).addTo(mapInstance);
+    marker.bindPopup(`
+      <div class="map-popup">
+        <div class="map-popup-cat" style="color:${cat.color}">${cat.label}</div>
+        <h4>${p.name}</h4>
+        ${short ? `<p>${short}</p>` : ''}
+        <a href="#" onclick="event.preventDefault();showDetail('${p.id}')" style="color:${cat.color}">Ver detalles →</a>
+      </div>`, { maxWidth: 240 });
+    mapMarkers[p.id] = marker;
+  });
+}
+
+// ===== DETAIL VIEW =====
+function showDetail(id) {
+  const p = getData().find(x => x.id === id);
+  if (!p) return;
+  currentDetailId = id;
+  const cat    = CATEGORIES[p.category];
+  const photos = (p.photos || []).filter(Boolean);
+  let photosHtml = '';
+  if (photos.length === 1)    photosHtml = `<div class="detail-photos single"><img src="${photos[0]}" onerror="this.style.display='none'"/></div>`;
+  else if (photos.length >= 2) photosHtml = `<div class="detail-photos many">${photos.slice(0,4).map(ph=>`<img src="${ph}" onerror="this.style.display='none'"/>`).join('')}</div>`;
+
+  document.getElementById('detail-header-cat').innerHTML =
+    `<span class="cat-badge cat-badge-${p.category}">${cat.emoji} ${cat.label}</span>`;
+  document.getElementById('detail-admin-btn').style.display = getSession() ? '' : 'none';
+
+  const rows = [
+    p.address ? { icon:'📍', label:'Dirección', val: p.address } : null,
+    p.phone   ? { icon:'📞', label:'Teléfono',  val: p.phone }   : null,
+    p.email   ? { icon:'✉️', label:'Email',     val: `<a href="mailto:${p.email}" style="color:var(--col-accent)">${p.email}</a>` } : null,
+    p.web     ? { icon:'🌐', label:'Web',       val: `<a href="${p.web}" target="_blank" style="color:var(--col-accent)">${p.web}</a>` } : null,
+  ].filter(Boolean);
+
+  document.getElementById('detail-content').innerHTML = `
+    ${photosHtml}
+    <div class="detail-title">${p.name}</div>
+    ${p.desc ? `<div class="detail-desc">${p.desc}</div>` : ''}
+    ${rows.length ? `<div class="detail-section">
+      <h4>Información de Contacto</h4>
+      ${rows.map(r => `<div class="contact-row">
+        <div class="contact-icon">${r.icon}</div>
+        <div><div class="contact-label">${r.label}</div><div class="contact-val">${r.val}</div></div>
+      </div>`).join('')}
+    </div>` : ''}
+    <div class="detail-section">
+      <h4>Ubicación</h4>
+      <div style="display:flex;gap:20px">
+        <div><div class="contact-label">Latitud</div><div class="contact-val" style="font-size:13px;font-family:monospace">${p.lat}</div></div>
+        <div><div class="contact-label">Longitud</div><div class="contact-val" style="font-size:13px;font-family:monospace">${p.lng}</div></div>
+      </div>
+    </div>`;
+  showView('detail');
+}
+
+function editCurrentPlace() {
+  if (!currentDetailId) return;
+  showView('admin');
+  openEditForm(currentDetailId);
+}
+
+// ===== ADMIN =====
+function renderAdminList() {
+  const places = getData();
+  const el = document.getElementById('admin-place-list');
+  if (!places.length) { el.innerHTML = '<div class="admin-empty">No hay lugares. Agrega el primero →</div>'; return; }
+  el.innerHTML = places.map(p => {
+    const cat = CATEGORIES[p.category];
+    return `<div class="admin-place-card">
+      <div class="apc-info">
+        <div class="apc-name">${p.name}</div>
+        <div class="apc-meta">${p.lat}, ${p.lng}</div>
+      </div>
+      <span class="cat-badge cat-badge-${p.category}">${cat.label}</span>
+      <div class="apc-actions">
+        <button class="btn btn-sm" onclick="openEditForm('${p.id}')">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePlace('${p.id}')">Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openNewForm() {
+  currentEditId = null; clearForm();
+  document.getElementById('form-panel-title').textContent = 'Nuevo Lugar';
+}
+
+function openEditForm(id) {
+  const p = getData().find(x => x.id === id);
+  if (!p) return;
+  currentEditId = id;
+  document.getElementById('form-panel-title').textContent = 'Editar Lugar';
+  document.getElementById('f-name').value    = p.name || '';
+  document.getElementById('f-cat').value     = p.category || 'religion';
+  document.getElementById('f-lat').value     = p.lat || '';
+  document.getElementById('f-lng').value     = p.lng || '';
+  document.getElementById('f-desc').value    = p.desc || '';
+  document.getElementById('f-address').value = p.address || '';
+  document.getElementById('f-phone').value   = p.phone || '';
+  document.getElementById('f-email').value   = p.email || '';
+  document.getElementById('f-web').value     = p.web || '';
+  document.getElementById('f-photos').value  = (p.photos || []).join('\n');
+  updatePhotoPreview();
+  document.getElementById('admin-form-panel').scrollTop = 0;
+}
+
+function clearForm() {
+  ['f-name','f-lat','f-lng','f-desc','f-address','f-phone','f-email','f-web','f-photos'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f-cat').value = 'religion';
+  document.getElementById('photo-preview').innerHTML = '';
+  document.getElementById('form-msg').style.display = 'none';
+}
+
+function updatePhotoPreview() {
+  const urls = document.getElementById('f-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  document.getElementById('photo-preview').innerHTML = urls.slice(0,6).map(url =>
+    `<div class="photo-thumb-wrapper"><img class="photo-thumb" src="${url}" onerror="this.style.opacity='.3'"/></div>`
+  ).join('');
+}
+document.getElementById('f-photos').addEventListener('input', updatePhotoPreview);
+
+async function savePlace() {
+  const name = document.getElementById('f-name').value.trim();
+  const lat  = document.getElementById('f-lat').value.trim();
+  const lng  = document.getElementById('f-lng').value.trim();
+  if (!name || !lat || !lng) { showFormMsg('Nombre, latitud y longitud son obligatorios.', true); return; }
+  if (isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) { showFormMsg('Latitud y longitud deben ser números.', true); return; }
+  const photos = document.getElementById('f-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const data = {
+    name, lat, lng, photos,
+    category: document.getElementById('f-cat').value,
+    desc:     document.getElementById('f-desc').value.trim(),
+    address:  document.getElementById('f-address').value.trim(),
+    phone:    document.getElementById('f-phone').value.trim(),
+    email:    document.getElementById('f-email').value.trim(),
+    web:      document.getElementById('f-web').value.trim(),
+  };
+  showFormMsg('Guardando…', false);
+  try {
+    if (currentEditId) {
+      await updatePlace(currentEditId, data);
+      notify('Lugar actualizado');
+    } else {
+      await saveNewPlace(data);
+      currentEditId = data.id;
+      notify('Lugar agregado');
+    }
+    renderAdminList(); updateSidebar(); renderMobilePanel(); refreshMarkers();
+    showFormMsg('Guardado correctamente ✓', false);
+  } catch(e) {
+    showFormMsg('Error al guardar: ' + e.message, true);
+  }
+}
+
+async function deletePlace(id) {
+  if (!confirm('¿Eliminar este lugar?')) return;
+  try {
+    await deleteFromSupabase(id);
+    if (currentEditId === id) { clearForm(); currentEditId = null; }
+    renderAdminList(); updateSidebar(); renderMobilePanel(); refreshMarkers();
+    notify('Lugar eliminado');
+  } catch(e) {
+    notify('Error al eliminar: ' + e.message, true);
+  }
+}
+
+function showFormMsg(msg, isError) {
+  const el = document.getElementById('form-msg');
+  el.textContent = msg; el.style.display = 'block';
+  el.style.color = isError ? 'var(--col-danger)' : 'var(--col-accent)';
+}
+
+// ===== NOTIFICATIONS =====
+function notify(msg, isDanger) {
+  const el = document.getElementById('notif');
+  el.textContent = msg;
+  el.className = 'notif' + (isDanger ? ' danger' : '');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ===== INIT =====
+const savedMode = localStorage.getItem('mapa_mode') || 'desktop';
+applyMode(savedMode);
+initLeafletMap();
+initUsers();
+const session = getSession();
+if (session) {
+  document.getElementById('footer-user').textContent = session.name;
+  document.getElementById('footer-user-mobile').textContent = session.name;
+}
+(async () => {
+  notify('Cargando lugares…');
+  await loadPlacesFromSupabase();
+  updateSidebar();
+  renderMobilePanel();
+  refreshMarkers();
+  document.getElementById('notif').classList.remove('show');
+})();
+</script>
+</body>
+</html>
