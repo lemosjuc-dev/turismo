@@ -662,7 +662,7 @@ function applyMode(mode) {
 }
 
 // ===== SUPABASE CONFIG — REEMPLAZÁ ESTOS VALORES =====
-const SUPABASE_URL  = 'https://skdckeetwfgztzbxyecw.supabase.co';   // solo el dominio, sin /rest/v1
+const SUPABASE_URL  = 'https://skdckeetwfgztzbxyecw.supabase.co';   // ← pegá tu URL
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrZGNrZWV0d2ZnenR6Ynh5ZWN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMTQyMDYsImV4cCI6MjA5NTc5MDIwNn0.T47h_Q--KRfUrfvZ6uq5iJ7leQ3fnTqixb-kziOFbzM';                       // ← pegá tu clave pública
 // ======================================================
 
@@ -699,7 +699,7 @@ async function loadPlacesFromSupabase() {
       category: r.category,
       lat:      r.lat,
       lng:      r.lng,
-      desc:     r.desc     || '',
+      desc:     r.descr    || '',
       address:  r.address  || '',
       phone:    r.phone    || '',
       email:    r.email    || '',
@@ -726,7 +726,7 @@ async function saveNewPlace(data) {
     category: data.category,
     lat:      data.lat,
     lng:      data.lng,
-    desc:     data.desc    || null,
+    descr:    data.desc    || null,
     address:  data.address || null,
     phone:    data.phone   || null,
     email:    data.email   || null,
@@ -749,7 +749,7 @@ async function updatePlace(id, data) {
     category: data.category,
     lat:      data.lat,
     lng:      data.lng,
-    desc:     data.desc    || null,
+    descr:    data.desc    || null,
     address:  data.address || null,
     phone:    data.phone   || null,
     email:    data.email   || null,
