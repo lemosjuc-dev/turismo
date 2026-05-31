@@ -662,13 +662,15 @@ function applyMode(mode) {
 }
 
 // ===== SUPABASE CONFIG — REEMPLAZÁ ESTOS VALORES =====
-const SUPABASE_URL  = 'https://kbiizxgbbhztfowbdwex.supabase.co/rest/v1/';   // ← pegá tu URL
-const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWl6eGdiYmh6dGZvd2Jkd2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMzQzMzYsImV4cCI6MjA5NTgxMDMzNn0._RoJWpYNN78EYSgQGv7vU-RYotvgrCWSZs8SGDfCx7g';                       // ← pegá tu clave pública
+const SUPABASE_URL  = 'https://skdckeetwfgztzbxyecw.supabase.co';   // solo el dominio, sin /rest/v1
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrZGNrZWV0d2ZnenR6Ynh5ZWN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMTQyMDYsImV4cCI6MjA5NTc5MDIwNn0.T47h_Q--KRfUrfvZ6uq5iJ7leQ3fnTqixb-kziOFbzM';                       // ← pegá tu clave pública
 // ======================================================
 
+// Cache local para no depender 100% de la red en cada render
 let _placesCache = [];
 let _supabaseReady = false;
 
+// ===== SUPABASE HELPERS =====
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
     ...options,
@@ -680,7 +682,10 @@ async function sbFetch(path, options = {}) {
       ...options.headers,
     }
   });
-  if (!res.ok) { const err = await res.text(); throw new Error('Supabase error: ' + err); }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Supabase error: ' + err);
+  }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
@@ -689,9 +694,17 @@ async function loadPlacesFromSupabase() {
   try {
     const rows = await sbFetch('places?select=*&order=created_at.asc');
     _placesCache = (rows || []).map(r => ({
-      id: r.id, name: r.name, category: r.category, lat: r.lat, lng: r.lng,
-      desc: r.descr || '', address: r.address || '', phone: r.phone || '',
-      email: r.email || '', web: r.web || '', photos: r.photos || [],
+      id:       r.id,
+      name:     r.name,
+      category: r.category,
+      lat:      r.lat,
+      lng:      r.lng,
+      desc:     r.desc     || '',
+      address:  r.address  || '',
+      phone:    r.phone    || '',
+      email:    r.email    || '',
+      web:      r.web      || '',
+      photos:   r.photos   || [],
     }));
     _supabaseReady = true;
     return _placesCache;
@@ -702,37 +715,65 @@ async function loadPlacesFromSupabase() {
   }
 }
 
-function getData() { return _placesCache; }
+// ===== DATA (ahora sincrónico desde cache, async al guardar) =====
+function getData() {
+  return _placesCache;
+}
 
 async function saveNewPlace(data) {
   const row = {
-    name: data.name, category: data.category, lat: data.lat, lng: data.lng,
-    descr: data.desc || null, address: data.address || null, phone: data.phone || null,
-    email: data.email || null, web: data.web || null, photos: data.photos || [],
+    name:     data.name,
+    category: data.category,
+    lat:      data.lat,
+    lng:      data.lng,
+    desc:     data.desc    || null,
+    address:  data.address || null,
+    phone:    data.phone   || null,
+    email:    data.email   || null,
+    web:      data.web     || null,
+    photos:   data.photos  || [],
   };
-  const result = await sbFetch('places', { method: 'POST', body: JSON.stringify(row) });
+  const result = await sbFetch('places', {
+    method: 'POST',
+    body: JSON.stringify(row),
+  });
   const saved = Array.isArray(result) ? result[0] : result;
-  data.id = saved.id;
+  data.id = saved.id; // UUID del servidor
   _placesCache.push({ ...data, id: saved.id });
   return saved.id;
 }
 
 async function updatePlace(id, data) {
   const row = {
-    name: data.name, category: data.category, lat: data.lat, lng: data.lng,
-    descr: data.desc || null, address: data.address || null, phone: data.phone || null,
-    email: data.email || null, web: data.web || null, photos: data.photos || [],
+    name:     data.name,
+    category: data.category,
+    lat:      data.lat,
+    lng:      data.lng,
+    desc:     data.desc    || null,
+    address:  data.address || null,
+    phone:    data.phone   || null,
+    email:    data.email   || null,
+    web:      data.web     || null,
+    photos:   data.photos  || [],
   };
-  await sbFetch('places?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(row), prefer: 'return=minimal' });
+  await sbFetch('places?id=eq.' + id, {
+    method: 'PATCH',
+    body: JSON.stringify(row),
+    prefer: 'return=minimal',
+  });
   const idx = _placesCache.findIndex(p => p.id === id);
   if (idx >= 0) _placesCache[idx] = { ...data, id };
 }
 
 async function deleteFromSupabase(id) {
-  await sbFetch('places?id=eq.' + id, { method: 'DELETE', prefer: 'return=minimal' });
+  await sbFetch('places?id=eq.' + id, {
+    method: 'DELETE',
+    prefer: 'return=minimal',
+  });
   _placesCache = _placesCache.filter(p => p.id !== id);
 }
 
+// ===== USUARIOS (siguen en localStorage — son solo los admins locales) =====
 function getUsers() {
   try { return JSON.parse(localStorage.getItem('mapa_users') || 'null'); } catch(e) { return null; }
 }
@@ -1114,12 +1155,15 @@ if (session) {
   document.getElementById('footer-user').textContent = session.name;
   document.getElementById('footer-user-mobile').textContent = session.name;
 }
+
+// Cargar datos desde Supabase y luego renderizar
 (async () => {
   notify('Cargando lugares…');
   await loadPlacesFromSupabase();
   updateSidebar();
   renderMobilePanel();
   refreshMarkers();
+  // Quitar notificación de carga
   document.getElementById('notif').classList.remove('show');
 })();
 </script>
